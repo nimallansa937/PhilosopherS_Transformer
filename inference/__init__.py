@@ -24,7 +24,11 @@ VKS + MULTI-TIER VERIFICATION (Addendum B):
 - self_repair: Local repair before oracle escalation
 - engine_v3: Production engine with claim-level routing
 
+V3 UNIFIED ARCHITECTURE:
+- signal_extractor_full: Hidden-state signal extraction (HF model)
 - templates/: Z3 formalization templates
+
+See also: reasoning_core/ for Layers 1-5 (ontology, ASPIC+, Z3, GVR, spaces)
 """
 
 # -- Original HF-based components --

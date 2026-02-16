@@ -468,6 +468,8 @@ def check_phase11() -> dict:
                                 "meta_learner.py"),
         "signal_extractor": (PROJECT_ROOT / "inference" /
                              "signal_extractor.py"),
+        "signal_extractor_full": (PROJECT_ROOT / "inference" /
+                                  "signal_extractor_full.py"),
         "oracle_module": (PROJECT_ROOT / "inference" / "oracle.py"),
         "z3_templates": (PROJECT_ROOT / "inference" / "templates" /
                          "descartes_z3.py"),
@@ -487,6 +489,23 @@ def check_phase11() -> dict:
         "verifier": (PROJECT_ROOT / "inference" / "verifier.py"),
         "self_repair": (PROJECT_ROOT / "inference" / "self_repair.py"),
         "engine_v3": (PROJECT_ROOT / "inference" / "engine_v3.py"),
+        # Reasoning Core (V3 Unified Architecture, Layers 1-5)
+        "ontology_core": (PROJECT_ROOT / "reasoning_core" /
+                          "ontology" / "core.py"),
+        "ontology_theories": (PROJECT_ROOT / "reasoning_core" /
+                              "ontology" / "theories.py"),
+        "aspic_engine": (PROJECT_ROOT / "reasoning_core" /
+                         "argumentation" / "aspic_engine.py"),
+        "walton_schemes": (PROJECT_ROOT / "reasoning_core" /
+                           "argumentation" / "walton_schemes.py"),
+        "z3_engine": (PROJECT_ROOT / "reasoning_core" /
+                      "verification" / "z3_engine.py"),
+        "cvc5_engine": (PROJECT_ROOT / "reasoning_core" /
+                        "verification" / "cvc5_engine.py"),
+        "gvr_loop": (PROJECT_ROOT / "reasoning_core" /
+                     "bridge" / "gvr_loop.py"),
+        "conceptual_spaces": (PROJECT_ROOT / "reasoning_core" /
+                              "spaces" / "conceptual_spaces.py"),
     }
 
     component_status = {k: v.exists() for k, v in components.items()}
@@ -508,6 +527,15 @@ def check_phase11() -> dict:
     vks_ready = all(
         component_status.get(k, False) for k in vks_components)
 
+    # Reasoning Core components (V3 Unified Architecture)
+    reasoning_core_components = {
+        "ontology_core", "ontology_theories", "aspic_engine",
+        "walton_schemes", "z3_engine", "cvc5_engine",
+        "gvr_loop", "conceptual_spaces"
+    }
+    reasoning_core_ready = all(
+        component_status.get(k, False) for k in reasoning_core_components)
+
     # Check model and meta-learner
     model_exists = (PROJECT_ROOT / "models" /
                     "descartes-8b-cascade").exists()
@@ -525,6 +553,7 @@ def check_phase11() -> dict:
         "all_components_present": all_present,
         "ollama_components_present": ollama_ready,
         "vks_components_present": vks_ready,
+        "reasoning_core_present": reasoning_core_ready,
         "vks_store_exists": vks_exists,
         "model_exists": model_exists,
         "meta_learner_exists": meta_exists,
@@ -533,8 +562,9 @@ def check_phase11() -> dict:
         "threshold": "Ollama + VKS inference modules present",
     }
 
-    # Full readiness requires model + meta-learner + oracle + VKS
+    # Full readiness requires model + meta-learner + oracle + VKS + reasoning core
     status["fully_ready"] = (ollama_ready and vks_ready and
+                             reasoning_core_ready and
                              model_exists and meta_exists and
                              oracle_ready and vks_exists)
 
