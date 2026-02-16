@@ -48,12 +48,23 @@ def main():
 
     # ---- Model ----
     print(f"Loading model from {MODEL_NAME}...")
+
+    # Use flash_attention_2 if available, fall back to sdpa
+    attn_impl = "sdpa"  # PyTorch native, always available
+    try:
+        import flash_attn  # noqa: F401
+        attn_impl = "flash_attention_2"
+        print("  Using: flash_attention_2 (fastest)")
+    except ImportError:
+        print("  flash-attn not installed, using PyTorch SDPA (still fast)")
+        print("  To install: MAX_JOBS=4 pip install flash-attn --no-build-isolation")
+
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
         torch_dtype=torch.bfloat16,
         device_map="auto",
         trust_remote_code=True,
-        attn_implementation="flash_attention_2",
+        attn_implementation=attn_impl,
     )
 
     total_params = sum(p.numel() for p in model.parameters())

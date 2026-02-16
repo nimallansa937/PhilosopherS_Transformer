@@ -459,7 +459,7 @@ def check_phase10() -> dict:
 
 def check_phase11() -> dict:
     """Validate Phase 11: Cascade Inference Engine is ready."""
-    # Check all required components exist (original + Ollama addendum)
+    # Check all required components exist (original + Ollama + VKS)
     components = {
         # Original HF-based
         "cascade_engine": (PROJECT_ROOT / "inference" /
@@ -471,11 +471,22 @@ def check_phase11() -> dict:
         "oracle_module": (PROJECT_ROOT / "inference" / "oracle.py"),
         "z3_templates": (PROJECT_ROOT / "inference" / "templates" /
                          "descartes_z3.py"),
-        # Ollama addendum
+        # Ollama addendum (Addendum A)
         "engine_ollama": (PROJECT_ROOT / "inference" / "engine.py"),
         "signal_extractor_lite": (PROJECT_ROOT / "inference" /
                                   "signal_extractor_lite.py"),
         "feedback_module": (PROJECT_ROOT / "inference" / "feedback.py"),
+        # VKS + Multi-tier verification (Addendum B)
+        "knowledge_store": (PROJECT_ROOT / "inference" /
+                            "knowledge_store.py"),
+        "seed_axioms": (PROJECT_ROOT / "inference" / "seed_axioms.py"),
+        "claim_extractor": (PROJECT_ROOT / "inference" /
+                            "claim_extractor.py"),
+        "claim_router": (PROJECT_ROOT / "inference" /
+                         "claim_router.py"),
+        "verifier": (PROJECT_ROOT / "inference" / "verifier.py"),
+        "self_repair": (PROJECT_ROOT / "inference" / "self_repair.py"),
+        "engine_v3": (PROJECT_ROOT / "inference" / "engine_v3.py"),
     }
 
     component_status = {k: v.exists() for k, v in components.items()}
@@ -489,6 +500,14 @@ def check_phase11() -> dict:
     ollama_ready = all(
         component_status.get(k, False) for k in ollama_components)
 
+    # VKS components (Addendum B)
+    vks_components = {
+        "knowledge_store", "claim_extractor", "claim_router",
+        "verifier", "self_repair", "engine_v3"
+    }
+    vks_ready = all(
+        component_status.get(k, False) for k in vks_components)
+
     # Check model and meta-learner
     model_exists = (PROJECT_ROOT / "models" /
                     "descartes-8b-cascade").exists()
@@ -498,20 +517,26 @@ def check_phase11() -> dict:
     # Check oracle API
     oracle_ready = check_phase10()["pass"]
 
+    # Check VKS store
+    vks_exists = (PROJECT_ROOT / "models" / "vks.json").exists()
+
     status = {
         "components": component_status,
         "all_components_present": all_present,
         "ollama_components_present": ollama_ready,
+        "vks_components_present": vks_ready,
+        "vks_store_exists": vks_exists,
         "model_exists": model_exists,
         "meta_learner_exists": meta_exists,
         "oracle_configured": oracle_ready,
-        "pass": ollama_ready,  # Ollama components present
-        "threshold": "Ollama inference modules present",
+        "pass": ollama_ready and vks_ready,
+        "threshold": "Ollama + VKS inference modules present",
     }
 
-    # Full readiness requires model + meta-learner + oracle
-    status["fully_ready"] = (ollama_ready and model_exists and
-                             meta_exists and oracle_ready)
+    # Full readiness requires model + meta-learner + oracle + VKS
+    status["fully_ready"] = (ollama_ready and vks_ready and
+                             model_exists and meta_exists and
+                             oracle_ready and vks_exists)
 
     return status
 
