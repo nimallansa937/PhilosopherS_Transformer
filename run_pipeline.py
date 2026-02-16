@@ -49,8 +49,9 @@ PHASES = {
         "scripts": [
             "corpus/scripts/download_sep.py",
             "corpus/scripts/download_arxiv.py",
+            "corpus/scripts/download_corpus.py",
         ],
-        "description": "Download Descartes + context philosophical texts",
+        "description": "Download Descartes + context philosophical texts (SEP, arXiv, Gutenberg, Archive.org)",
         "depends_on": [],
         "validation": "check_phase1",
         "status_tag": "ADAPTED",
