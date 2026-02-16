@@ -106,8 +106,11 @@ PHASES = {
     },
     8: {
         "name": "Base Model Evaluation",
-        "scripts": ["training/eval/eval_cpt_descartes.py"],
-        "description": "Benchmark small model alone (perplexity + domain)",
+        "scripts": [
+            "training/eval/eval_cpt_descartes.py",
+            "training/eval/eval_base.py",
+        ],
+        "description": "Benchmark small model alone (perplexity + domain + reasoning)",
         "depends_on": [7],
         "validation": "check_phase8",
         "status_tag": "ADAPTED",
@@ -130,8 +133,10 @@ PHASES = {
     },
     11: {
         "name": "Cascade Inference Engine (Ollama)",
-        "scripts": [],  # Engine is a library, not a script
-        "description": "Full cascade: Ollama local + meta-learner + Ollama cloud oracle",
+        "scripts": [
+            "corpus/scripts/build_corpus_index.py",
+        ],
+        "description": "Build corpus index + Full cascade: Ollama local + meta-learner + Ollama cloud oracle",
         "depends_on": [9, 10],
         "validation": "check_phase11",
         "status_tag": "NEW — Ollama",
@@ -499,10 +504,14 @@ def check_phase11() -> dict:
                          "argumentation" / "aspic_engine.py"),
         "walton_schemes": (PROJECT_ROOT / "reasoning_core" /
                            "argumentation" / "walton_schemes.py"),
+        "zombie_argument": (PROJECT_ROOT / "reasoning_core" /
+                            "argumentation" / "zombie_argument.py"),
         "z3_engine": (PROJECT_ROOT / "reasoning_core" /
                       "verification" / "z3_engine.py"),
         "cvc5_engine": (PROJECT_ROOT / "reasoning_core" /
                         "verification" / "cvc5_engine.py"),
+        "verification_examples": (PROJECT_ROOT / "reasoning_core" /
+                                  "verification" / "examples.py"),
         "gvr_loop": (PROJECT_ROOT / "reasoning_core" /
                      "bridge" / "gvr_loop.py"),
         "conceptual_spaces": (PROJECT_ROOT / "reasoning_core" /
@@ -531,7 +540,8 @@ def check_phase11() -> dict:
     # Reasoning Core components (V3 Unified Architecture)
     reasoning_core_components = {
         "ontology_core", "ontology_theories", "aspic_engine",
-        "walton_schemes", "z3_engine", "cvc5_engine",
+        "walton_schemes", "zombie_argument", "z3_engine",
+        "cvc5_engine", "verification_examples",
         "gvr_loop", "conceptual_spaces"
     }
     reasoning_core_ready = all(
