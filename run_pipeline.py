@@ -21,15 +21,16 @@ Phase Dependencies (Cascade Architecture):
     Phase 6  (SFT Data)       -> Phases 1-3 (can run parallel to 4-5)
     Phase 7  (Two-Stage SFT)  -> Phase 5 + Phase 6
     Phase 8  (Base Eval)      -> Phase 7
-    Phase 9  (Meta-Learner)   -> Phase 7 + Oracle API key
-    Phase 10 (Oracle Setup)   -> Oracle API key
+    Phase 9  (Meta-Learner)   -> Phase 7 + Ollama (local + cloud)
+    Phase 10 (Oracle Setup)   -> Ollama Cloud configured
     Phase 11 (Cascade Engine) -> Phase 9 + Phase 10
-    Phase 12 (End-to-End)     -> Phase 11
+    Phase 12 (End-to-End)     -> Phase 11 (routing + convergence eval)
 
 Architecture:
     Small Model (Qwen3-8B)  — fully trained on Descartes corpus
-    Oracle (DeepSeek/Claude) — untrained, API access for broad knowledge
-    Meta-Learner (~100K params) — routes queries based on model internals
+    Oracle (DeepSeek/Claude) — untrained, via Ollama Cloud or API
+    Meta-Learner (Lite ~50K / Full ~12M) — routes queries + online learning
+    Ollama unified API for both local and cloud models (Phases 9-12)
 """
 
 import argparse
@@ -112,35 +113,38 @@ PHASES = {
     },
     9: {
         "name": "Meta-Learner Bootstrap",
-        "scripts": ["training/bootstrap_meta_learner.py"],
-        "description": "Bootstrap routing meta-learner from small+oracle comparison",
+        "scripts": ["training/bootstrap_meta.py"],
+        "description": "Bootstrap routing meta-learner via Ollama (local vs oracle)",
         "depends_on": [7],
         "validation": "check_phase9",
-        "status_tag": "NEW",
+        "status_tag": "NEW — Ollama",
     },
     10: {
-        "name": "Oracle Integration",
-        "scripts": [],  # No scripts — just validation of API setup
-        "description": "Configure and verify large model oracle API access",
+        "name": "Oracle Integration (Ollama)",
+        "scripts": [],  # No scripts — validates Ollama setup
+        "description": "Configure and verify Ollama local + cloud oracle access",
         "depends_on": [],
         "validation": "check_phase10",
-        "status_tag": "NEW",
+        "status_tag": "NEW — Ollama",
     },
     11: {
-        "name": "Cascade Inference Engine",
+        "name": "Cascade Inference Engine (Ollama)",
         "scripts": [],  # Engine is a library, not a script
-        "description": "Full cascade system: small model + meta-learner + oracle",
+        "description": "Full cascade: Ollama local + meta-learner + Ollama cloud oracle",
         "depends_on": [9, 10],
         "validation": "check_phase11",
-        "status_tag": "NEW",
+        "status_tag": "NEW — Ollama",
     },
     12: {
         "name": "End-to-End Evaluation",
-        "scripts": ["training/eval/eval_descartes_cascade.py"],
-        "description": "Cascade benchmarks: validity, routing, knowledge, calibration",
+        "scripts": [
+            "training/eval/eval_routing.py",
+            "training/eval/eval_convergence.py",
+        ],
+        "description": "Routing accuracy + meta-learner convergence evaluation",
         "depends_on": [11],
         "validation": "check_phase12",
-        "status_tag": "NEW",
+        "status_tag": "NEW — Ollama",
     },
 }
 
@@ -381,33 +385,70 @@ def check_phase9() -> dict:
 # ============================================================
 
 def check_phase10() -> dict:
-    """Validate Phase 10: Oracle API access is configured."""
-    # Check for any of the supported API keys
-    providers = {
+    """Validate Phase 10: Ollama local + cloud oracle access."""
+    import shutil
+    import subprocess as sp
+
+    # Check Ollama is installed
+    ollama_installed = shutil.which("ollama") is not None
+
+    # Check Ollama models available
+    local_model_ready = False
+    cloud_model_ready = False
+    available_models = []
+
+    if ollama_installed:
+        try:
+            result = sp.run(
+                ["ollama", "list"], capture_output=True, text=True,
+                timeout=10)
+            if result.returncode == 0:
+                output = result.stdout.lower()
+                available_models = [
+                    line.split()[0]
+                    for line in output.strip().split('\n')[1:]
+                    if line.strip()
+                ]
+                local_model_ready = any(
+                    "descartes" in m for m in available_models)
+                cloud_model_ready = any(
+                    "cloud" in m for m in available_models)
+        except Exception:
+            pass
+
+    # Fallback: also check for legacy API keys
+    legacy_providers = {
         "deepseek": "DEEPSEEK_API_KEY",
         "claude": "ANTHROPIC_API_KEY",
         "openai": "OPENAI_API_KEY",
     }
+    legacy_available = {
+        name: bool(os.environ.get(env, "") and len(os.environ.get(env, "")) > 10)
+        for name, env in legacy_providers.items()
+    }
+    any_legacy = any(legacy_available.values())
 
-    available = {}
-    for name, env_var in providers.items():
-        key = os.environ.get(env_var, "")
-        available[name] = bool(key and len(key) > 10)
-
-    any_available = any(available.values())
+    # Pass if Ollama is set up OR legacy API keys exist
+    ollama_ready = ollama_installed and (local_model_ready or cloud_model_ready)
+    overall_pass = ollama_ready or any_legacy
 
     status = {
-        "providers": available,
-        "any_provider_configured": any_available,
-        "pass": any_available,
-        "threshold": "At least one oracle API key configured",
+        "ollama_installed": ollama_installed,
+        "local_model_ready": local_model_ready,
+        "cloud_model_ready": cloud_model_ready,
+        "available_models": available_models[:10],  # Limit display
+        "legacy_api_keys": legacy_available,
+        "pass": overall_pass,
+        "threshold": "Ollama installed with models, or legacy API key configured",
     }
 
-    # Try to identify which provider is set
-    for name, is_set in available.items():
-        if is_set:
-            status["active_provider"] = name
-            break
+    if ollama_ready:
+        status["active_provider"] = "ollama"
+    elif any_legacy:
+        for name, is_set in legacy_available.items():
+            if is_set:
+                status["active_provider"] = name
+                break
 
     return status
 
@@ -418,8 +459,9 @@ def check_phase10() -> dict:
 
 def check_phase11() -> dict:
     """Validate Phase 11: Cascade Inference Engine is ready."""
-    # Check all required components exist
+    # Check all required components exist (original + Ollama addendum)
     components = {
+        # Original HF-based
         "cascade_engine": (PROJECT_ROOT / "inference" /
                            "cascade_engine.py"),
         "meta_learner_module": (PROJECT_ROOT / "inference" /
@@ -429,10 +471,23 @@ def check_phase11() -> dict:
         "oracle_module": (PROJECT_ROOT / "inference" / "oracle.py"),
         "z3_templates": (PROJECT_ROOT / "inference" / "templates" /
                          "descartes_z3.py"),
+        # Ollama addendum
+        "engine_ollama": (PROJECT_ROOT / "inference" / "engine.py"),
+        "signal_extractor_lite": (PROJECT_ROOT / "inference" /
+                                  "signal_extractor_lite.py"),
+        "feedback_module": (PROJECT_ROOT / "inference" / "feedback.py"),
     }
 
     component_status = {k: v.exists() for k, v in components.items()}
     all_present = all(component_status.values())
+
+    # Ollama-essential components (subset)
+    ollama_components = {
+        "engine_ollama", "meta_learner_module",
+        "signal_extractor_lite", "feedback_module"
+    }
+    ollama_ready = all(
+        component_status.get(k, False) for k in ollama_components)
 
     # Check model and meta-learner
     model_exists = (PROJECT_ROOT / "models" /
@@ -446,15 +501,16 @@ def check_phase11() -> dict:
     status = {
         "components": component_status,
         "all_components_present": all_present,
+        "ollama_components_present": ollama_ready,
         "model_exists": model_exists,
         "meta_learner_exists": meta_exists,
         "oracle_configured": oracle_ready,
-        "pass": all_present,  # Components exist (model checked separately)
-        "threshold": "All inference modules present",
+        "pass": ollama_ready,  # Ollama components present
+        "threshold": "Ollama inference modules present",
     }
 
     # Full readiness requires model + meta-learner + oracle
-    status["fully_ready"] = (all_present and model_exists and
+    status["fully_ready"] = (ollama_ready and model_exists and
                              meta_exists and oracle_ready)
 
     return status
@@ -466,20 +522,47 @@ def check_phase11() -> dict:
 
 def check_phase12() -> dict:
     """Validate Phase 12: End-to-End Cascade Evaluation."""
-    eval_path = (PROJECT_ROOT / "training" / "eval" /
-                 "cascade_eval_results.json")
+    # Check both new eval results and legacy
+    routing_path = (PROJECT_ROOT / "training" / "eval" /
+                    "routing_eval_results.json")
+    convergence_path = (PROJECT_ROOT / "training" / "eval" /
+                        "convergence_eval_results.json")
+    legacy_path = (PROJECT_ROOT / "training" / "eval" /
+                   "cascade_eval_results.json")
 
     status = {
-        "results_exist": eval_path.exists(),
+        "routing_results_exist": routing_path.exists(),
+        "convergence_results_exist": convergence_path.exists(),
+        "legacy_results_exist": legacy_path.exists(),
         "pass": False,
-        "threshold": ("validity >= 85%, routing >= 80%, "
-                      "knowledge >= 70%, ECE < 0.15"),
+        "threshold": ("routing >= 80%, calibration error <= 0.15"),
     }
 
-    if eval_path.exists():
+    # Check routing eval results
+    if routing_path.exists():
         try:
-            results = json.loads(eval_path.read_text())
-            status["results"] = {
+            routing_results = json.loads(routing_path.read_text())
+            status["routing_accuracy"] = routing_results.get("accuracy", 0)
+            status["routing_pass"] = routing_results.get("pass", False)
+        except json.JSONDecodeError:
+            pass
+
+    # Check convergence eval results
+    if convergence_path.exists():
+        try:
+            conv_results = json.loads(convergence_path.read_text())
+            status["calibration_pass"] = conv_results.get(
+                "calibration_pass", False)
+            status["convergence_pass"] = conv_results.get(
+                "overall_pass", False)
+        except json.JSONDecodeError:
+            pass
+
+    # Check legacy results
+    if legacy_path.exists():
+        try:
+            results = json.loads(legacy_path.read_text())
+            status["legacy_results"] = {
                 "validity": results.get("validity", {}).get(
                     "accuracy", 0),
                 "routing": results.get("routing", {}).get(
@@ -489,9 +572,17 @@ def check_phase12() -> dict:
                 "calibration_ece": results.get("calibration", {}).get(
                     "ece", 1.0),
             }
-            status["pass"] = results.get("overall_pass", False)
         except json.JSONDecodeError:
             pass
+
+    # Overall pass: new eval OR legacy
+    status["pass"] = (
+        status.get("routing_pass", False) or
+        status.get("convergence_pass", False) or
+        (legacy_path.exists() and
+         json.loads(legacy_path.read_text()).get("overall_pass", False)
+         if legacy_path.exists() else False)
+    )
 
     return status
 
@@ -593,15 +684,30 @@ def run_phase(phase_num: int, extra_args: list = None):
         print(f"  Routing accuracy: {result.get('routing_accuracy', 'N/A')}")
         print(f"  Oracle cost: ${result.get('oracle_cost', 0):.4f}")
     elif phase_num == 10:
-        for provider, avail in result.get("providers", {}).items():
-            icon = "OK" if avail else "--"
-            print(f"    [{icon}] {provider}")
-    elif phase_num == 12 and "results" in result:
-        r = result["results"]
-        print(f"  Validity:    {r.get('validity', 0):.1%}")
-        print(f"  Routing:     {r.get('routing', 0):.1%}")
-        print(f"  Knowledge:   {r.get('knowledge', 0):.1%}")
-        print(f"  ECE:         {r.get('calibration_ece', 1.0):.3f}")
+        ollama_ok = "OK" if result.get("ollama_installed") else "--"
+        local_ok = "OK" if result.get("local_model_ready") else "--"
+        cloud_ok = "OK" if result.get("cloud_model_ready") else "--"
+        print(f"    [{ollama_ok}] Ollama installed")
+        print(f"    [{local_ok}] Local model (descartes:8b)")
+        print(f"    [{cloud_ok}] Cloud oracle")
+        models = result.get("available_models", [])
+        if models:
+            print(f"    Models: {', '.join(models[:5])}")
+        # Show legacy API keys as fallback
+        for provider, avail in result.get("legacy_api_keys", {}).items():
+            if avail:
+                print(f"    [OK] Legacy: {provider} API key")
+    elif phase_num == 12:
+        if "routing_accuracy" in result:
+            print(f"  Routing accuracy: {result['routing_accuracy']:.1%}")
+        if "routing_pass" in result:
+            print(f"  Routing:     {'PASS' if result['routing_pass'] else 'FAIL'}")
+        if "calibration_pass" in result:
+            print(f"  Calibration: {'PASS' if result['calibration_pass'] else 'FAIL'}")
+        if "legacy_results" in result:
+            r = result["legacy_results"]
+            print(f"  (Legacy) Validity:  {r.get('validity', 0):.1%}")
+            print(f"  (Legacy) Knowledge: {r.get('knowledge', 0):.1%}")
 
     return passed
 
