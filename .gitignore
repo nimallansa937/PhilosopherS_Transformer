@@ -1,0 +1,53 @@
+# Large data files — do NOT push to GitHub
+corpus/raw/
+corpus/extracted/
+corpus/cleaned/
+corpus/formatted/*.jsonl
+
+# Source PDFs / epubs / zips (too large for GitHub)
+descart/
+*.zip
+*.pdf
+*.epub
+*.djvu
+*.torrent
+*.parts
+
+# Model checkpoints
+models/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Environment
+.env
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Wandb
+wandb/
+
+# Logs
+*.log
+
+# Jupyter
+.ipynb_checkpoints/

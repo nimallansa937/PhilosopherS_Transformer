@@ -1,0 +1,104 @@
+# Philosopher Engine - Corpus Configuration
+# Target: 1B tokens for continued pre-training
+
+corpus_target_tokens: 1_000_000_000  # 1B tokens target
+
+mixing_ratio:
+  philosophy_of_mind: 0.40
+  neuroscience: 0.20
+  broader_philosophy: 0.15
+  cognitive_science: 0.15
+  cross_disciplinary: 0.10
+
+sources:
+
+  # ---- PRIMARY: Open Access Philosophy ----
+
+  stanford_encyclopedia:
+    url: "https://plato.stanford.edu/"
+    type: "web_scrape"
+    estimated_tokens: 80_000_000
+    category: "philosophy_of_mind"  # + broader_philosophy
+    notes: >
+      ~1,800 articles. Focus on: consciousness, qualia,
+      functionalism, physicalism, dualism, mental causation,
+      personal identity, free will, intentionality, perception,
+      philosophy of neuroscience, cognitive science entries.
+    priority: 1
+
+  philpapers_open_access:
+    url: "https://philpapers.org/"
+    type: "pdf_download"
+    estimated_tokens: 200_000_000
+    category: "philosophy_of_mind"
+    notes: >
+      Filter for: open access papers in philosophy of mind,
+      philosophy of cognitive science, metaphysics of mind.
+      PhilPapers API available for metadata.
+    priority: 1
+
+  arxiv_philosophy:
+    url: "https://arxiv.org/"
+    type: "pdf_download"
+    categories: ["cs.AI", "cs.CL", "q-bio.NC"]
+    estimated_tokens: 50_000_000
+    category: "cross_disciplinary"
+    notes: >
+      Papers at intersection of AI, philosophy, neuroscience.
+      Search terms: consciousness, qualia, phenomenal experience,
+      hard problem, neural correlates of consciousness.
+    priority: 2
+
+  # ---- NEUROSCIENCE ----
+
+  pubmed_central_open:
+    url: "https://www.ncbi.nlm.nih.gov/pmc/"
+    type: "pdf_download"
+    estimated_tokens: 150_000_000
+    category: "neuroscience"
+    notes: >
+      Open access neuroscience papers. Focus on:
+      neural correlates of consciousness (NCC),
+      global workspace theory empirical work,
+      IIT empirical predictions, predictive processing,
+      attention and consciousness, blindsight, split-brain.
+    priority: 1
+
+  # ---- COGNITIVE SCIENCE ----
+
+  cognitive_science_society:
+    url: "https://cognitivesciencesociety.org/"
+    type: "pdf_download"
+    estimated_tokens: 50_000_000
+    category: "cognitive_science"
+    notes: "Proceedings of CogSci conferences, open access papers."
+    priority: 2
+
+  # ---- BOOKS (Public Domain / Open Access) ----
+
+  classic_philosophy_texts:
+    type: "gutenberg_download"
+    estimated_tokens: 100_000_000
+    category: "broader_philosophy"
+    texts:
+      - "Descartes - Meditations on First Philosophy"
+      - "Hume - A Treatise of Human Nature"
+      - "Kant - Critique of Pure Reason"
+      - "James - Principles of Psychology"
+      - "Russell - The Analysis of Mind"
+      - "Ryle - The Concept of Mind"
+    priority: 2
+
+  # ---- CONTEMPORARY (Fair Use / Author-Permitted) ----
+
+  author_repositories:
+    type: "direct_download"
+    estimated_tokens: 100_000_000
+    category: "philosophy_of_mind"
+    notes: >
+      Many philosophers host papers on personal websites.
+      Check: David Chalmers' papers page, Daniel Dennett's
+      papers page, Ned Block, Tyler Burge, Frank Jackson,
+      Thomas Nagel (selected), Giulio Tononi (IIT papers).
+      ALWAYS verify license/permissions.
+    priority: 1

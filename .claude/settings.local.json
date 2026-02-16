@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(python run_pipeline.py:*)",
+      "Bash(md5sum:*)",
+      "Bash(while read hash)",
+      "Bash(do echo \"DUPLICATE \\(hash: $hash\\):\")",
+      "Bash(done)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(git init:*)",
+      "Bash(git status:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

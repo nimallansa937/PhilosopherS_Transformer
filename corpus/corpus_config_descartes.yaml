@@ -1,0 +1,89 @@
+# corpus_config_descartes.yaml
+# Descartes-focused corpus for cascade architecture
+
+corpus_target_tokens: 100_000_000  # 100M tokens target
+
+sources:
+
+  # ============================================================
+  # TIER 1: DESCARTES PRIMARY TEXTS (Public Domain)
+  # ============================================================
+
+  descartes_primary:
+    type: "gutenberg_and_archive"
+    estimated_tokens: 5_000_000
+    category: "descartes_primary"
+    priority: 1
+    texts:
+      - title: "Meditations on First Philosophy"
+        notes: "Core text. Six meditations + objections and replies."
+      - title: "Discourse on the Method"
+        notes: "Parts 1-6. Part 4 contains the Cogito reasoning."
+      - title: "Principles of Philosophy"
+        notes: "Parts 1-2. Substance/attribute/mode ontology."
+      - title: "The Passions of the Soul"
+        notes: "Mind-body interaction via pineal gland."
+      - title: "Rules for the Direction of the Mind"
+        notes: "Early methodological work."
+      - title: "Correspondence (selected)"
+        notes: "Letters to Princess Elisabeth especially."
+
+  objections_and_replies:
+    type: "gutenberg_and_archive"
+    estimated_tokens: 3_000_000
+    category: "descartes_primary"
+    priority: 1
+
+  # ============================================================
+  # TIER 2: RATIONALIST TRADITION
+  # ============================================================
+
+  rationalist_tradition:
+    type: "gutenberg_and_archive"
+    estimated_tokens: 15_000_000
+    category: "rationalist_tradition"
+    priority: 2
+
+  descartes_scholarship:
+    type: "pdf_download"
+    estimated_tokens: 20_000_000
+    category: "descartes_primary"
+    priority: 1
+
+  # ============================================================
+  # TIER 2: PHILOSOPHY OF MIND
+  # ============================================================
+
+  philosophy_of_mind:
+    type: "mixed"
+    estimated_tokens: 20_000_000
+    category: "philosophy_of_mind"
+    priority: 2
+
+  # ============================================================
+  # TIER 3: FORMAL LOGIC AND ARGUMENTATION
+  # ============================================================
+
+  formal_logic:
+    type: "mixed"
+    estimated_tokens: 10_000_000
+    category: "formal_logic"
+    priority: 2
+
+  # ============================================================
+  # TIER 3: CONTEMPORARY RESPONSES
+  # ============================================================
+
+  contemporary_responses:
+    type: "mixed"
+    estimated_tokens: 10_000_000
+    category: "contemporary_responses"
+    priority: 3
+
+mixing_ratio:
+  descartes_primary: 0.25
+  rationalist_tradition: 0.20
+  philosophy_of_mind: 0.20
+  descartes_scholarship: 0.15
+  formal_logic: 0.10
+  contemporary_responses: 0.10

@@ -1,0 +1,15 @@
+{
+  "created": "2026-02-15",
+  "target_tokens": 1000000000,
+  "mixing_ratio": {
+    "philosophy_of_mind": 0.40,
+    "neuroscience": 0.20,
+    "broader_philosophy": 0.15,
+    "cognitive_science": 0.15,
+    "cross_disciplinary": 0.10
+  },
+  "sources": [],
+  "total_documents": 0,
+  "total_tokens_estimated": 0,
+  "status": "assembling"
+}

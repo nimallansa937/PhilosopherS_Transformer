@@ -1,0 +1,15 @@
+{
+  "name": "philosopher-engine-cpt",
+  "description": "Continued pre-training corpus for philosophical reasoning",
+  "train_sequences": 2109,
+  "val_sequences": 112,
+  "train_tokens_estimated": 16573080,
+  "val_tokens_estimated": 885991,
+  "total_tokens_estimated": 17459071,
+  "max_seq_length": 8192,
+  "train_split": 0.95,
+  "seed": 42,
+  "category_distribution": {
+    "broader_philosophy": 2109
+  }
+}
