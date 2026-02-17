@@ -1,15 +1,20 @@
 {
   "name": "philosopher-engine-cpt",
   "description": "Continued pre-training corpus for philosophical reasoning",
-  "train_sequences": 2109,
-  "val_sequences": 112,
-  "train_tokens_estimated": 16573080,
-  "val_tokens_estimated": 885991,
-  "total_tokens_estimated": 17459071,
+  "train_sequences": 14439,
+  "val_sequences": 760,
+  "train_tokens_estimated": 114815498,
+  "val_tokens_estimated": 6094459,
+  "total_tokens_estimated": 120909957,
   "max_seq_length": 8192,
   "train_split": 0.95,
   "seed": 42,
   "category_distribution": {
-    "broader_philosophy": 2109
+    "archive_org": 11721,
+    "broader_philosophy": 2482,
+    "rationalist_tradition": 174,
+    "descartes_primary": 11,
+    "gutenberg": 35,
+    "descartes_scholarship": 16
   }
 }

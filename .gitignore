@@ -3,9 +3,11 @@ corpus/raw/
 corpus/extracted/
 corpus/cleaned/
 corpus/formatted/*.jsonl
+corpus/index.json
 
 # Source PDFs / epubs / zips (too large for GitHub)
 descart/
+Descartes 2/
 *.zip
 *.pdf
 *.epub

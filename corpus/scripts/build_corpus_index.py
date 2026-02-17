@@ -295,7 +295,7 @@ def build_index(input_dir: Path,
                   f"{chunk_count} chunks so far...")
 
     if verbose:
-        print(f"\n  Total: {file_count} files → {chunk_count} chunks")
+        print(f"\n  Total: {file_count} files -> {chunk_count} chunks")
 
     return entries
 
