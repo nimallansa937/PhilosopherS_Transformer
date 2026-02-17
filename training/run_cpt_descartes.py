@@ -1,14 +1,19 @@
 """
 Phase 5 (CASCADE): Full CPT on Qwen3-8B with Descartes corpus.
-Single A40 48GB or A6000 Ada. No multi-GPU, no QLoRA needed.
 
-Expected: ~1 hour training, ~$0.55 GPU cost on A40.
+VRAM budget for full-parameter CPT on 8B model:
+  Model bf16:           ~16.4 GB
+  Optimizer (AdamW):    ~32.8 GB (2x model for momentum + variance)
+  Activations (grad ckpt, seq=2048, batch=1): ~4-6 GB
+  Total:                ~53-55 GB
+  -> Fits A100 80GB with headroom. Tight on A40 48GB.
 
 Usage:
     python training/run_cpt_descartes.py
 
-Vast.ai quick-start (copy-paste into fresh terminal):
-    See bottom of this file or README for full setup commands.
+    # Override seq length or batch size:
+    MAX_SEQ=4096 python training/run_cpt_descartes.py
+    BATCH=2 ACCUM=16 python training/run_cpt_descartes.py
 """
 
 import torch
@@ -23,6 +28,7 @@ from datasets import load_dataset
 import os
 import sys
 import time
+import json
 from pathlib import Path
 
 # ---- Configuration ----
@@ -31,15 +37,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = str(PROJECT_ROOT / "models" / "descartes-8b-cpt")
 DATA_DIR = str(PROJECT_ROOT / "corpus" / "formatted")
 
-# VRAM Budget (A40 48GB):
-#   Model bf16:          ~16.4 GB
-#   Optimizer (AdamW):   ~32.8 GB (2x model for momentum + variance)
-#   Activations (grad ckpt): ~2-4 GB
-#   Total:               ~51-53 GB -> TIGHT on 48GB
-#
-# Solution: gradient_checkpointing=True + per_device_batch=2 + grad_accum=16
-# Effective batch stays 32, but peak VRAM drops to ~40-44GB.
-# If still OOM, reduce per_device_batch to 1 + grad_accum to 32.
+# Sequence length: 2048 is safe for 80GB, override with MAX_SEQ env var
+MAX_SEQ = int(os.environ.get("MAX_SEQ", "2048"))
 
 
 def main():
@@ -67,26 +66,35 @@ def main():
     print(f"Loading model from {MODEL_NAME}...")
 
     # Use flash_attention_2 if available, fall back to sdpa
-    attn_impl = "sdpa"  # PyTorch native, always available
+    attn_impl = "sdpa"
     try:
         import flash_attn  # noqa: F401
         attn_impl = "flash_attention_2"
         print("  Using: flash_attention_2 (fastest)")
     except ImportError:
-        print("  flash-attn not installed, using PyTorch SDPA (still fast)")
-        print("  To install: MAX_JOBS=4 pip install flash-attn --no-build-isolation")
+        print("  Using: PyTorch SDPA (still fast)")
 
+    # IMPORTANT: Do NOT use device_map="auto" for training.
+    # It splits model across CPU/GPU which causes backward pass errors.
+    # Load directly to GPU with .to("cuda").
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
         torch_dtype=torch.bfloat16,
-        device_map="auto",
         trust_remote_code=True,
         attn_implementation=attn_impl,
-    )
+    ).to("cuda")
+
+    # Enable gradient checkpointing BEFORE creating optimizer
+    model.gradient_checkpointing_enable()
 
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Parameters: {total_params:,}")
     print(f"Model VRAM: ~{total_params * 2 / 1e9:.1f} GB (bf16)")
+
+    # Print actual VRAM usage after model load
+    alloc_gb = torch.cuda.memory_allocated() / 1e9
+    print(f"VRAM after model load: {alloc_gb:.1f} GB / {gpu_mem:.1f} GB "
+          f"({gpu_mem - alloc_gb:.1f} GB free)")
 
     # ---- Dataset ----
     print(f"\nLoading dataset from {DATA_DIR}...")
@@ -107,16 +115,17 @@ def main():
     print(f"  Val:   {len(dataset['validation']):,} sequences")
 
     # ---- Tokenize ----
+    print(f"Tokenizing (max_length={MAX_SEQ})...")
+
     def tokenize(examples):
         return tokenizer(
             examples["text"],
             truncation=True,
-            max_length=8192,
+            max_length=MAX_SEQ,
             padding=False,
             return_special_tokens_mask=True
         )
 
-    print("Tokenizing...")
     tokenized = dataset.map(
         tokenize, batched=True,
         remove_columns=["text"], num_proc=4
@@ -127,21 +136,15 @@ def main():
     )
 
     # ---- Determine batch size for available VRAM ----
-    # A40 48GB: batch=2, accum=16 -> effective 32 (safe)
-    # A100 80GB: batch=4, accum=8 -> effective 32 (comfortable)
-    # H100 80GB: batch=8, accum=4 -> effective 32 (fast)
-    if gpu_mem >= 75:
-        per_device_batch = 4
-        grad_accum = 8
-    elif gpu_mem >= 45:
-        per_device_batch = 2
-        grad_accum = 16
-    else:
-        per_device_batch = 1
-        grad_accum = 32
+    # After model load, remaining VRAM is for optimizer + activations.
+    # Optimizer takes ~32.8 GB (AdamW states for 8B params).
+    # With grad checkpointing, activations scale linearly with seq_len.
+    # Safe defaults: batch=1, accum=32 for any 80GB GPU with 8B model.
+    per_device_batch = int(os.environ.get("BATCH", "1"))
+    grad_accum = int(os.environ.get("ACCUM", "32"))
     effective_batch = per_device_batch * grad_accum
     print(f"\nBatch config: {per_device_batch} x {grad_accum} = "
-          f"{effective_batch} effective")
+          f"{effective_batch} effective (seq_len={MAX_SEQ})")
 
     # ---- Check if wandb is available ----
     report_to = "none"
@@ -151,20 +154,19 @@ def main():
             report_to = "wandb"
             print("Logging to: Weights & Biases")
         else:
-            print("wandb installed but not logged in. Logging disabled.")
-            print("  To enable: wandb login")
+            print("wandb not configured. Logging to console only.")
     except (ImportError, AttributeError):
-        print("wandb not installed. Logging to console only.")
-        print("  To enable: pip install wandb && wandb login")
+        print("wandb not available. Logging to console only.")
 
     # ---- Training Arguments ----
     args = TrainingArguments(
         output_dir=OUTPUT_DIR,
 
-        # 4 epochs for thorough domain absorption on 8B model
+        # 4 epochs for thorough domain absorption
         num_train_epochs=4,
 
         per_device_train_batch_size=per_device_batch,
+        per_device_eval_batch_size=per_device_batch,
         gradient_accumulation_steps=grad_accum,
 
         # Low LR to avoid catastrophic forgetting
@@ -177,7 +179,7 @@ def main():
 
         save_strategy="steps",
         save_steps=500,
-        save_total_limit=3,
+        save_total_limit=2,  # 2 checkpoints to save disk
 
         eval_strategy="steps",
         eval_steps=500,
@@ -188,12 +190,15 @@ def main():
 
         gradient_checkpointing=True,
 
-        # Prevents OOM from optimizer state fragmentation
+        # Fused optimizer reduces VRAM fragmentation
         optim="adamw_torch_fused",
 
-        # DataLoader workers
-        dataloader_num_workers=4,
+        # DataLoader
+        dataloader_num_workers=2,
         dataloader_pin_memory=True,
+
+        # Max sequence length for position embeddings
+        max_grad_norm=1.0,
     )
 
     # ---- Trainer ----
@@ -208,10 +213,10 @@ def main():
     # ---- Estimate time and cost ----
     n_samples = len(tokenized["train"])
     total_steps = (n_samples * 4) // effective_batch
-    # A40: ~1.5-2.5 steps/sec with batch=2, grad_ckpt, 8192 seq
-    steps_per_sec = 2.0
+    # With batch=1 + grad_ckpt + seq=2048 on A100: ~1.5-2 steps/sec
+    steps_per_sec = 1.5
     hours_est = total_steps / steps_per_sec / 3600
-    cost_est = hours_est * 0.55
+    cost_est = hours_est * 0.75  # A100 rate
 
     print(f"\n{'=' * 60}")
     print(f"TRAINING PLAN")
@@ -219,10 +224,11 @@ def main():
     print(f"  Model:         {MODEL_NAME}")
     print(f"  Samples:       {n_samples:,}")
     print(f"  Epochs:        4")
+    print(f"  Seq length:    {MAX_SEQ}")
     print(f"  Batch size:    {effective_batch} (effective)")
     print(f"  Total steps:   {total_steps:,}")
     print(f"  Est. time:     {hours_est:.1f} hours")
-    print(f"  Est. cost:     ${cost_est:.2f} (at $0.55/hr)")
+    print(f"  Est. cost:     ${cost_est:.2f} (at $0.75/hr)")
     print(f"  Output:        {OUTPUT_DIR}")
     print(f"{'=' * 60}")
 
@@ -240,13 +246,13 @@ def main():
     print(f"Model saved to {OUTPUT_DIR}")
 
     # ---- Save training summary ----
-    import json
     summary = {
         "model": MODEL_NAME,
         "output_dir": OUTPUT_DIR,
         "train_samples": n_samples,
         "val_samples": len(tokenized["validation"]),
         "epochs": 4,
+        "max_seq_length": MAX_SEQ,
         "effective_batch_size": effective_batch,
         "total_steps": total_steps,
         "training_hours": round(elapsed, 2),
